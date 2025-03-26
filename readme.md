@@ -5,6 +5,7 @@ Simple and fast cli daily task manager written in rust.
 
 ```
 Usage:  rustask [COMMAND] [ARGUMENTS]
+Example: rustask add "buy pineapple juice" 5:00pm 5:30pm  
 Commands:
   add <task> <start> <end>   Adds a new task
   edit <index>               Edits the given task by index
