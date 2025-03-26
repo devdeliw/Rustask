@@ -252,7 +252,7 @@ impl Todo {
         Ok(())
     }
 
-    // ---- Helper Methods ----
+    // Helpers
 
     fn open_file(
         &self,
@@ -278,7 +278,6 @@ impl Todo {
     }
 
     fn create_file_if_empty(&self, file_path: &str) -> io::Result<()> {
-        // If file doesn't exist or is empty, create it and write today's date
         let path = Path::new(file_path);
         if !path.exists() || fs::metadata(path)?.len() == 0 {
             let mut writer = BufWriter::new(self.open_file(file_path, false, true, false, true, false)?);
@@ -314,7 +313,7 @@ impl Todo {
         }
 
         let mut output = Vec::new();
-        // Keep the first line (the date) always
+        // Keep Date
         if let Some(header) = lines.get(0) {
             output.push(header.clone());
         }
@@ -322,7 +321,6 @@ impl Todo {
         let mut new_index = 1;
         let mut found = false;
         for line in lines.iter().skip(1) {
-            // Compare the line's leading index to the requested index
             if line.starts_with(&index.to_string()) {
                 found = true;
                 continue;
@@ -365,11 +363,9 @@ impl Todo {
                 output.push(line.to_string());
             } else {
                 let mut line_mod = line.clone();
-                // Remove the last character (✓ or ✕)
                 if !line_mod.is_empty() {
                     line_mod.pop(); 
                 }
-                // Add new one
                 let symbol = if done { "✓" } else { "✕" };
                 line_mod.push_str(symbol);
                 output.push(line_mod);
@@ -392,7 +388,7 @@ impl Todo {
     }
 }
 
-// --- Helper: parse index from user arguments
+// Helper: parse index from user arguments
 fn parse_index(args: &[String]) -> io::Result<i8> {
     if args.is_empty() {
         eprintln!("No index provided. Usage example: rm 3");
