@@ -4,7 +4,7 @@ use std::io;
 use std::path::Path;
 
 use chrono::Local;
-use task::{help, Todo};
+use rustask::{help, Todo};
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();

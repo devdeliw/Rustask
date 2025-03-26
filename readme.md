@@ -4,7 +4,7 @@ Simple and fast cli daily task manager written in rust.
 > In root directory, run `cargo install --path .`
 
 ```
-Usage:  task [COMMAND] [ARGUMENTS]
+Usage:  rustask [COMMAND] [ARGUMENTS]
 Commands:
   add <task> <start> <end>   Adds a new task
   edit <index>               Edits the given task by index
