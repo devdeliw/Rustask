@@ -23,7 +23,7 @@ fn main() -> io::Result<()> {
         match command {
             "show" | "list"     => todo.show()?,
             "add"               => todo.add(&args[2..])?,
-            "rm"                => todo.remove(&args[2..])?,
+            "rm"                => todo.rm(&args[2..])?,
             "edit"              => todo.edit(&args[2..])?,
             "rmrf" | "reset"    => todo.remove_all()?,
             "fin" | "done"      => todo.mark_done(&args[2..])?,

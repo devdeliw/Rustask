@@ -1,6 +1,6 @@
 use chrono::Local;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 
 pub struct Entry {
@@ -71,16 +71,18 @@ impl Todo {
         Ok(())
     }
 
-    pub fn remove(&self, args: &[String]) -> io::Result<()> {
+    pub fn rm(&self, args: &[String]) -> io::Result<()> {
         let index = parse_index(args)?;
         if !self.remove_index_from_file(&self.main_file, index)? {
-            eprintln!("Index {} not found in tasks.", index);
+            eprintln!("{index} not found.");
             return Ok(());
         }
-        let _ = self.remove_index_from_file(&self.backup_file, index);
+
+        let _ = self.remove_index_from_file(&self.backup_file, index)?;
         self.show()?;
         Ok(())
     }
+
 
     pub fn edit(&self, args: &[String]) -> io::Result<()> {
         let index = parse_index(args)?;
@@ -88,59 +90,53 @@ impl Todo {
 
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
-        let fields: Vec<&str> = input.trim().split_whitespace().collect();
+        let parts: Vec<&str> = input.trim().split_whitespace().collect();
 
-        if fields.len() != 3 {
-            eprintln!("Invalid input. Need exactly: <task_name> <start_time> <end_time>.");
+        if parts.len() < 3 {
+            eprintln!("Invalid input. Need at least 3 tokens: <task_name> <start> <end>.");
             return Ok(());
         }
 
-        let new_task = fields[0];
-        let new_start = fields[1];
-        let new_end = fields[2];
+        let end = parts.last().unwrap();
+        let start = parts.get(parts.len() - 2).unwrap();
+        let task = parts[..parts.len() - 2].join(" ");
 
-        let mut buffer = BufReader::new(self.open_file(&self.main_file, true, false, false, false, false)?);
-        let mut lines = Vec::new();
-        buffer.read_to_end(&mut lines)?;
-        let lines = String::from_utf8_lossy(&lines);
-        let lines: Vec<String> = lines.lines().map(|l| l.to_string()).collect();
+        let lines: Vec<String> = BufReader::new(self.open_file(&self.main_file, true, false, false, false, false)?)
+            .lines()
+            .filter_map(Result::ok)
+            .collect();
 
-        let mut output = Vec::new();
-        if let Some(header) = lines.get(0) {
-            output.push(header.to_string());
-        }
-
+        let mut output = vec![lines[0].clone()];
         let mut found = false;
-        for line in lines.iter().skip(1) {
+
+        for line in &lines[1..] {
             if line.starts_with(&index.to_string()) {
-                let edited_line = format!(
-                    "{:<3} {:<30}   {:>20} | {}",
+                let edited = format!(
+                    "{:<3} {:<30}   {:>20} | ✕",
                     index,
-                    new_task,
-                    format!("{} - {}", new_start, new_end),
-                    "✕"
+                    task,
+                format!("{} - {}", start, end)
                 );
-                output.push(edited_line);
+                output.push(edited);
                 found = true;
             } else {
-                output.push(line.to_string());
+                output.push(line.clone());
             }
         }
 
-        let mut writer = BufWriter::new(self.open_file(&self.main_file, false, true, false, false, true)?);
-        for line in output {
-            writeln!(writer, "{}", line)?;
-        }
-        writer.flush()?;
+        let mut w = BufWriter::new(self.open_file(&self.main_file, false, true, false, false, true)?);
+        for l in output { writeln!(w, "{l}")?; }
+        w.flush()?;
 
         if found {
             self.update_backup()?;
             self.show()?;
         } else {
-            eprintln!("Index {} not found in tasks.", index);
+            eprintln!("Index {} not found.", index);
         }
         Ok(())
     }
+
 
     pub fn mark_done(&self, args: &[String]) -> io::Result<()> {
         let index = parse_index(args)?;
@@ -156,60 +152,56 @@ impl Todo {
         Ok(())
     }
 
-    pub fn sort(&self) -> io::Result<()> {
-        let buffer = BufReader::new(self.open_file(&self.main_file, true, false, false, false, false)?);
-        let lines: Vec<String> = buffer.lines().filter_map(Result::ok).collect();
+    pub fn sort(&self) -> io::Result<()> {  
+        let file_path = &self.main_file; 
+        let reader = BufReader::new(self.open_file(file_path, true, false, false, false, false)?);
 
-        if lines.is_empty() {
-            println!("No tasks to sort.");
-            return Ok(());
-        }
+        let lines: io::Result<Vec<String>> = reader.lines().collect(); 
+        let mut lines = lines?; 
 
-        let mut header = String::new();
-        let mut incomplete = Vec::new();
-        let mut complete = Vec::new();
+        let mut unfinished_lines: Vec<String> = Vec::new(); 
+        let mut finished_lines  : Vec<String> = Vec::new(); 
 
-        // Date header 
-        if let Some(first) = lines.first() {
-            header = first.clone();
-        }
+        match lines.get(0) {
+            Some(date) => unfinished_lines.push(date.to_string()), 
+            None       => ()
+        } 
 
-        for line in lines.iter().skip(1) {
-            let is_done = line.ends_with('✓');
-            if is_done {
-                complete.push(line.to_string());
-            } else {
-                incomplete.push(line.to_string());
+        for line in lines.iter_mut().skip(1) { 
+            if line.chars().last().unwrap() == '✕' { 
+                unfinished_lines.push(line.to_string()); 
+            } else { 
+                finished_lines.push(line.to_string()); 
             }
         }
 
-        let mut writer = BufWriter::new(self.open_file(&self.main_file, false, true, false, false, true)?);
-        // Rewrite date header 
-        writeln!(writer, "{}", header)?;
-        let mut idx = 1;
-        for line in &incomplete {
-            let task_part = match line.get(4..) {
-                Some(s) => s,
-                None => line,
-            };
-            writeln!(writer, "{:<3}{}", idx, task_part)?;
-            idx += 1;
-        }
-        // Rewrite complete tasks
-        for line in &complete {
-            let task_part = match line.get(4..) {
-                Some(s) => s,
-                None => line,
-            };
-            writeln!(writer, "{:<3}{}", idx, task_part)?;
-            idx += 1;
-        }
-        writer.flush()?;
+        let writer = self.open_file(file_path, false, true, false, false, true)?;
+        let mut writer = BufWriter::new(writer);
 
+        unfinished_lines.extend(finished_lines); 
+        
+        let mut lines_to_keep: Vec<String> = Vec::new(); 
+        lines_to_keep.push(unfinished_lines.remove(0)); 
+
+        let mut num_lines = 1; 
+        for line in unfinished_lines.iter() {
+            let task = line.get(4..).unwrap_or(""); 
+            lines_to_keep.push(format!("{num_lines}    {task}"));
+            num_lines += 1    
+        }
+
+        for line in lines_to_keep {
+            writer.write_all(line.as_bytes())?;
+            writer.write_all(b"\n")?;
+        }
+
+        writer.flush()?; 
         self.update_backup()?;
-        self.show()?;
+        self.show()?; 
+ 
         Ok(())
     }
+
 
     pub fn remove_all(&self) -> io::Result<()> {
         println!("Remove all tasks? Type `Yes` to confirm.");
@@ -305,38 +297,31 @@ impl Todo {
     }
 
     fn remove_index_from_file(&self, file_path: &str, index: i8) -> io::Result<bool> {
-        let buffer = BufReader::new(self.open_file(file_path, true, false, false, false, false)?);
-        let lines: Vec<String> = buffer.lines().filter_map(Result::ok).collect();
+        let reader = BufReader::new(self.open_file(file_path, true, false, false, false, false)?);
+        let lines: Vec<String> = reader.lines().collect::<io::Result<_>>()?;
+        let mut output = Vec::with_capacity(lines.len());
 
-        if lines.is_empty() {
-            return Ok(false);
-        }
-
-        let mut output = Vec::new();
-        // Keep Date
+        //  Keep the date header 
         if let Some(header) = lines.get(0) {
             output.push(header.clone());
         }
 
+        let idx_str = index.to_string();
         let mut new_index = 1;
-        let mut found = false;
+        let mut found = false; 
         for line in lines.iter().skip(1) {
-            if line.starts_with(&index.to_string()) {
-                found = true;
+            if line.starts_with(&idx_str) {
                 continue;
             }
-            let text_after_index = match line.get(4..) {
-                Some(s) => s,
-                None => line,
-            };
-            let reconstructed = format!("{:<3}{}", new_index, text_after_index);
-            output.push(reconstructed);
+            let task_text = line.get(4..).unwrap_or("").trim_end();
+            output.push(format!("{:<3} {}", new_index, task_text));
             new_index += 1;
+            found = true; 
         }
 
         let mut writer = BufWriter::new(self.open_file(file_path, false, true, false, false, true)?);
         for line in output {
-            writeln!(writer, "{}", line)?;
+            writeln!(writer, "{line}")?;
         }
         writer.flush()?;
 
